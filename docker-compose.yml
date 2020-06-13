@@ -1,0 +1,78 @@
+version: '3.3'
+
+networks:
+  redis-nw:
+    external: true
+
+services:
+  redis-master:
+    image: 'bitnami/redis:latest'
+    ports:
+      - '6379:6379'
+    networks:
+      - redis-nw
+    environment:
+      - REDIS_REPLICATION_MODE=master
+      - REDIS_PASSWORD=7cBEcwf6mV36Rx3S
+      - REDIS_EXTRA_FLAGS=--maxmemory 100mb --min-replicas-to-write 3
+    volumes:
+      - 'redis-master-volume:/bitnami'
+    deploy:
+      mode: replicated
+      replicas: 1
+
+  redis-slave:
+    image: 'bitnami/redis:latest'
+    networks:
+      - redis-nw
+    ports:
+      - '6379'
+    depends_on:
+      - redis-master
+    volumes:
+      - 'redis-slave-volume:/bitnami'
+    environment:
+      - REDIS_REPLICATION_MODE=replica
+      - REDIS_MASTER_HOST=redis-master
+      - REDIS_MASTER_PORT_NUMBER=6379
+      - REDIS_MASTER_PASSWORD=7cBEcwf6mV36Rx3S
+      - REDIS_PASSWORD=7cBEcwf6mV36Rx3S
+      - REDIS_EXTRA_FLAGS=--maxmemory 100mb --min-replicas-to-write 3
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  redis-sentinel:
+    image: 'bitnami/redis:latest'
+    networks:
+      - redis-nw
+    ports:
+      - '26379:26379'
+    depends_on:
+      - redis-master
+    volumes:
+      - 'redis-sentinel-volume:/bitnami'
+    entrypoint: |
+      bash -c 'bash -s <<EOF
+      "/bin/bash" -c "cat <<EOF > /opt/bitnami/redis/etc/sentinel.conf
+      port 26379
+      dir /tmp
+      sentinel monitor redis-cache redis-master 6379 2
+      sentinel down-after-milliseconds redis-cache 5000
+      sentinel parallel-syncs redis-cache 1
+      sentinel failover-timeout redis-cache 5000
+      sentinel auth-pass redis-cache 7cBEcwf6mV36Rx3S
+      EOF"
+      "/bin/bash" -c "redis-sentinel /opt/bitnami/redis/etc/sentinel.conf"
+      EOF'
+    deploy:
+      mode: replicated
+      replicas: 3
+
+volumes:
+  redis-master-volume:
+    driver: local
+  redis-slave-volume:
+    driver: local
+  redis-sentinel-volume:
+    driver: local
